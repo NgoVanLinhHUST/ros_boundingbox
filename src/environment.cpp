@@ -5,9 +5,11 @@
 #include "sensors/lidar.h"
 #include "render/render.h"
 #include "processPointClouds.h"
+#include <pcl/point_types.h>
+#include <pcl/filters/conditional_removal.h>
 // using templates for processPointClouds so also include .cpp to help linker
 #include "processPointClouds.cpp"
-
+int countVehicle = 0;
 std::vector<Car> initHighway(bool renderScene, pcl::visualization::PCLVisualizer::Ptr &viewer)
 {
 
@@ -57,7 +59,82 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointCloud
     bool render_clusters = true;    //enable render cluster
     bool render_box = true;         //enable bouding box in clustering
 
-    pcl::PointCloud<pcl::PointXYZI>::Ptr filterCloud = pointProcessorI->FilterCloud(inputCloud, 0.8, Eigen::Vector4f(-20., -14., -100., 1), Eigen::Vector4f(20., 14., 100., 1));
+
+
+
+// Rotation if data difference 45*
+
+    ///////////////////////
+  Eigen::Affine3f transform_2 = Eigen::Affine3f::Identity();
+
+  // Define a translation of 0 meters on the x axis.
+  transform_2.translation() <<0.0, 0.0, 0.0;
+
+  // The same rotation matrix as before; theta radians around Z axis, rotation -pi/2 
+  transform_2.rotate (Eigen::AngleAxisf (0, Eigen::Vector3f::UnitZ())); //*******//***********// -0.7 if rotation 45* 
+
+  // Print the transformation
+//   printf ("\nMethod #2: using an Affine3f\n");
+//   std::cout << transform_2.matrix() << std::endl;
+
+  // Executing the transformation
+
+  pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_cloud (new pcl::PointCloud<pcl::PointXYZI> ());
+  // You can either apply transform_1 or transform_2; they are the same
+  pcl::transformPointCloud (*inputCloud, *transformed_cloud, transform_2);
+
+
+  //////////////////////////
+
+
+
+
+
+  ////////////////////////
+
+// void pcl::ConditionBase< PointT >::addCondition (Ptr  condition); 	
+// build the condition
+// build range condition range_cond  -10 < y < 3 ... remove another
+  pcl::ConditionAnd<pcl::PointXYZI>::Ptr range_cond (new
+      pcl::ConditionAnd<pcl::PointXYZI> ());
+  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZI>::ConstPtr (new
+      pcl::FieldComparison<pcl::PointXYZI> ("y", pcl::ComparisonOps::GT, -15)));
+  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZI>::ConstPtr (new
+      pcl::FieldComparison<pcl::PointXYZI> ("y", pcl::ComparisonOps::LT, -2.5)));
+//// build range condition range_cond2   3 < y < 10 ... remove other 
+    pcl::ConditionAnd<pcl::PointXYZI>::Ptr range_cond2 (new
+        pcl::ConditionAnd<pcl::PointXYZI> ());
+  range_cond2->addComparison (pcl::FieldComparison<pcl::PointXYZI>::ConstPtr (new
+      pcl::FieldComparison<pcl::PointXYZI> ("y", pcl::ComparisonOps::GT, 2.5)));
+  range_cond2->addComparison (pcl::FieldComparison<pcl::PointXYZI>::ConstPtr (new
+      pcl::FieldComparison<pcl::PointXYZI> ("y", pcl::ComparisonOps::LT, 15)));
+
+/// addCondition range_cond or range_cond2 = range_cond3 : -10 < y < 3 or 3 < y < 10 
+pcl::ConditionOr<pcl::PointXYZI>::Ptr range_cond3 (new
+                  pcl::ConditionOr<pcl::PointXYZI> ());
+    range_cond3->addCondition(range_cond);
+    range_cond3->addCondition(range_cond2);
+  // build the filter
+  pcl::ConditionalRemoval<pcl::PointXYZI> condrem;
+
+  condrem.setCondition (range_cond3);
+  condrem.setInputCloud (transformed_cloud);
+  condrem.setKeepOrganized (true);
+
+
+
+      // apply filter
+  condrem.filter (*transformed_cloud);
+ //     cout << "hallooooo addcondition to remove___" << endl;
+/////////////////////////////////////////////////////////////
+  
+
+
+
+
+
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr filterCloud = pointProcessorI->FilterCloud(transformed_cloud, 0.8  , Eigen::Vector4f(-20., -13., -100., 1), Eigen::Vector4f(20., 13., 100., 1));
     if (render_filterCloud)
         renderPointCloud(viewer, filterCloud, "filterCloud");
 
@@ -70,10 +147,10 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointCloud
         renderPointCloud(viewer, segmentCloud.first, "obstCloud", Color(1, 0, 0));
         renderPointCloud(viewer, segmentCloud.second, "planeCloud", Color(0, 1, 0));
     }
-
+    // change clusterTolerance / minSize , maxSize to change object cluster
     //// Create point processor using Ransac Clustering
     // Clustering(cloud, clusterTolerance, minSize, maxSize)
-    std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> cloudClusters = pointProcessor->ClusteringScratch(segmentCloud.first, 1.0, 4, 200);
+    std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> cloudClusters = pointProcessor->ClusteringScratch(segmentCloud.first, 1.0, 4, 200);  // 1 4 200
     int clusterId = 0;
     std::vector<Color> colors = {Color(1, 0, 0), Color(0, 1, 0), Color(0, 0, 1)};
     for (pcl::PointCloud<pcl::PointXYZI>::Ptr cluster : cloudClusters)
@@ -83,6 +160,11 @@ void cityBlock(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointCloud
             std::cout << "Cluster size";
             pointProcessor->numPoints(cluster);
             renderPointCloud(viewer, cluster, "ObstCloud" + std::to_string(clusterId), colors[clusterId]);
+            // if( numPoints(cluster) > 50)
+            // {
+            //     countVehicle++;
+            //     std::cout << " ============== " << countVehicle << " ++++++++++++++";
+            // }
         }
         if (render_box)
         {
@@ -133,7 +215,7 @@ void simpleHighway(pcl::visualization::PCLVisualizer::Ptr &viewer)
     }
 
     //// Create point processor using Ransac Clustering
-    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> cloudClusters = pointProcessor->Clustering(segmentCloud.first, 1.0, 3, 30);
+    std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> cloudClusters = pointProcessor->Clustering(segmentCloud.first, 1.0, 3, 30); // 1.0 3 30
     int clusterId = 0;
     std::vector<Color> colors = {Color(1, 0, 0), Color(0, 1, 0), Color(0, 0, 1)};
     for (pcl::PointCloud<pcl::PointXYZ>::Ptr cluster : cloudClusters)
@@ -178,10 +260,13 @@ void initCamera(CameraAngle setAngle, pcl::visualization::PCLVisualizer::Ptr &vi
         break;
     case FPS:
         viewer->setCameraPosition(-10, 0, 0, 0, 0, 1);
+
+
+
     }
 
     if (setAngle != FPS)
-        viewer->addCoordinateSystem(1.0);
+        viewer->addCoordinateSystem(10.0);
 }
 
 int main(int argc, char **argv)
@@ -197,7 +282,7 @@ int main(int argc, char **argv)
     //Add more viewer scence to debug
    
     pcl::visualization::PCLVisualizer::Ptr viewer2(new pcl::visualization::PCLVisualizer("3D Viewer Raw PCD "));
-    CameraAngle setAngle2 = XY;
+    CameraAngle setAngle2 = TopDown;
     initCamera(setAngle2, viewer2);
 
 

@@ -1,4 +1,4 @@
-# Install script for directory: /home/linh/kincat/src/3D_lidar_obstacle_detection
+# Install script for directory: /home/linh/kincat/src/ros_boundingbox
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -50,5 +50,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/linh/kincat/src/3D_lidar_obstacle_detection/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/linh/kincat/src/ros_boundingbox/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
